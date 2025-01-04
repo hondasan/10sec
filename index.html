@@ -8,28 +8,21 @@
       font-family: sans-serif;
       text-align: center;
       margin: 20px;
-      position: relative; /* 祝福アニメーションでstarsを配置するため */
-      overflow-x: hidden; /* 星のアニメーションで横スクロールが出ないように */
+      position: relative;
+      overflow-x: hidden;
+      overflow-y: hidden;
     }
     h1 {
       font-size: 1.8em;
       margin-bottom: 30px;
     }
-    
-    /* ボタン類を横並びに、位置固定幅で配置することで、表示/非表示でズレないようにする */
+
+    /* ボタンを中央に配置 */
     .button-container {
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 40px; /* ボタン同士の間隔 */
       margin-bottom: 20px;
-    }
-    .button-slot {
-      /* 一定の幅を確保しておく */
-      width: 50vmin; 
-      display: flex;
-      justify-content: center;
-      align-items: center;
     }
 
     /* START/STOPボタン */
@@ -39,7 +32,7 @@
       border-radius: 50%;
       background-color: #007bff; /* START時の色 */
       color: #fff;
-      font-size: 24px;
+      font-size: 3rem;  /* 文字を大きく */
       border: none;
       outline: none;
       cursor: pointer;
@@ -62,24 +55,24 @@
       }
     }
 
-    /* リセットボタン */
-    #resetBtn {
-      width: 120px;
-      height: 50px;
-      border-radius: 25px;
-      background-color: #28a745;
-      color: #fff;
-      font-size: 18px;
-      border: none;
-      outline: none;
-      cursor: pointer;
-      transition: opacity 0.3s;
+    /* 継続的に出現するランダムアニメーション用の要素 */
+    .random-animation {
+      position: fixed;
+      font-size: 2rem;
+      pointer-events: none;
+      opacity: 0;
+      animation: floatAnim 2s linear forwards;
+      z-index: 999;
     }
-    #resetBtn:active {
-      opacity: 0.8;
-    }
-    .hidden {
-      visibility: hidden; /* display: none;だと幅0になり配置がずれるので visibilityを使う */
+    @keyframes floatAnim {
+      0% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(0, -200px) scale(0.5);
+        opacity: 0;
+      }
     }
 
     /* 結果表示 */
@@ -95,14 +88,7 @@
       font-weight: bold;
     }
 
-    /* 最良記録表示 */
-    #bestRecord {
-      font-size: 1.2em;
-      margin: 10px 0;
-    }
-
     /* ランクの色付け */
-    /* 文字色にしていますが、必要なら背景色にするなど調整してください */
     .rank-S { color: #f1c40f; } /* gold */
     .rank-A { color: #e67e22; } /* orange */
     .rank-B { color: #3498db; } /* blue */
@@ -110,16 +96,16 @@
     .rank-D { color: #9b59b6; } /* purple */
     .rank-E { color: #e74c3c; } /* red  */
 
-    /* ===== 祝福アニメーション用のスタイル ===== */
+    /* Sランクで祝福アニメーション（星が舞う） */
     .star {
-      position: fixed; /* 画面全体を舞う */
+      position: fixed;
       color: #f1c40f;  /* gold */
       font-size: 2em;
       pointer-events: none;
-      animation: fall 1.5s linear forwards;
+      animation: starFall 1.5s linear forwards;
       z-index: 9999;
     }
-    @keyframes fall {
+    @keyframes starFall {
       0% {
         opacity: 1;
         transform: translateY(-50px) rotate(0deg);
@@ -129,6 +115,25 @@
         transform: translateY(500px) rotate(360deg);
       }
     }
+
+    /* ランキング表示 */
+    #rankingContainer {
+      margin-top: 20px;
+      text-align: left;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+      font-size: 0.9em;
+    }
+    .ranking-title {
+      font-size: 1.2em;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .ranking-item {
+      margin-bottom: 5px;
+      line-height: 1.4em;
+    }
   </style>
 </head>
 <body>
@@ -136,105 +141,106 @@
   <h1>10秒ぴったりゲーム</h1>
 
   <div class="button-container">
-    <!-- START/STOP用の枠 -->
-    <div class="button-slot">
-      <button id="toggleBtn">START</button>
-    </div>
-    <!-- RESET用の枠（hidden時でも場所を取る） -->
-    <div class="button-slot">
-      <button id="resetBtn" class="hidden">RESET</button>
-    </div>
+    <button id="toggleBtn">START</button>
   </div>
 
   <div id="result"></div>
-  <div id="bestRecord">最良記録: --</div>
+
+  <!-- ランキング表示領域 -->
+  <div id="rankingContainer">
+    <div class="ranking-title">Top 3 Records</div>
+    <div id="rankingList"></div>
+  </div>
 
   <script>
-    let startTime = 0;           // STARTボタンを押した時刻
-    let isRunning = false;       // タイマーが動作中かどうか
-    let bestDifference = null;   // 最良の差 (絶対値が小さいほど良)
-    let bestTime = null;         // 最良記録(経過時間)
+    let startTime = 0;        // STARTボタンを押した時刻
+    let isRunning = false;    // タイマーが動作中かどうか
 
-    // ページ読み込み時にローカルストレージから最良記録を読み込み
+    // ローカルストレージ上にランキング用のキー
+    const STORAGE_KEY = "tenSecRanking";
+
+    // ページ読み込み時に既存のランキングを表示
     window.addEventListener('DOMContentLoaded', () => {
-      const storedBestDiff = localStorage.getItem('bestDifference');
-      const storedBestTime = localStorage.getItem('bestTime');
-      if (storedBestDiff !== null && storedBestTime !== null) {
-        bestDifference = parseFloat(storedBestDiff);
-        bestTime = parseFloat(storedBestTime);
-        const rank = getRank(bestDifference);
-        updateBestRecordText(bestTime, bestDifference, rank);
-      }
+      displayRanking();
     });
 
-    // 中二病セリフ集（英語のみ）
-    const chuniLines = [
-      "Bow before my absolute darkness!",
-      "I shall transcend the limits of fate!",
-      "Behold the end of all creation!",
-      "The prophecy of your doom has begun!",
-      "My power knows no bounds!",
-      "Shadows shall devour all!",
-      "Your mortal soul trembles before me!",
-      "I am the harbinger of eternal night!",
-      "Rejoice in the face of oblivion!",
-      "The ancient seal has been broken!"
-    ];
-
-    // ランク別にクラス名を指定（色分け用）
-    function getRankClass(rank) {
-      return `rank-${rank}`;
-    }
-
-    // ランク算出
+    // ランク取得
     function getRank(diff) {
-      if (diff < 0.05) {
+      // diff は 10秒との差の絶対値
+      if (diff < 0.00050) {
+        // 0.00050 = 0.0005 sec
         return "S";
-      } else if (diff < 0.3) {
+      } else if (diff < 0.00300) {
         return "A";
-      } else if (diff < 0.7) {
+      } else if (diff < 0.00700) {
         return "B";
-      } else if (diff < 1.0) {
+      } else if (diff < 0.01000) {
         return "C";
-      } else if (diff < 2.0) {
+      } else if (diff < 0.02000) {
         return "D";
       } else {
         return "E";
       }
     }
 
-    // 最良記録表示テキストを更新
-    function updateBestRecordText(time, difference, rank) {
-      document.getElementById("bestRecord").textContent =
-        `最良記録: ${time.toFixed(3)} 秒 (差 ${difference.toFixed(3)} 秒, ランク: ${rank})`;
+    // 継続的に画面上にランダムアニメーションを出す
+    // タイミングが不規則になるように、ランダムな間隔で再帰呼び出し
+    let animationRunning = false;
+    function startRandomAnimation() {
+      if (animationRunning) return;
+      animationRunning = true;
+
+      (function spawnNext() {
+        // 0.8秒 ～ 3秒 の間でランダムに再発生
+        const nextDelay = Math.random() * 2200 + 800;
+
+        // ランダム要素生成
+        spawnRandomElement();
+
+        // 再帰呼び出しで繰り返す
+        setTimeout(() => {
+          if (isRunning) {
+            spawnNext();
+          } else {
+            animationRunning = false;
+          }
+        }, nextDelay);
+      })();
     }
 
-    // Sランクで祝福アニメーション（星が舞う簡易演出）
-    function spawnBlessingAnimation() {
-      for (let i = 0; i < 20; i++) {
-        const star = document.createElement('div');
-        star.classList.add('star');
-        star.textContent = '★';
+    // 画面にランダムな文字や図形を表示する（不規則に出て上に消える）
+    function spawnRandomElement() {
+      const element = document.createElement('div');
+      element.classList.add('random-animation');
 
-        // 画面幅・高さを元にランダムなX位置(左右)を決める
-        const xPos = Math.random() * window.innerWidth;
-        const yPos = Math.random() * 100 - 100; // 少し上から落ちる
-        star.style.left = `${xPos}px`;
-        star.style.top = `${yPos}px`;
+      // 適当に絵文字候補
+      const emojis = ["✨","🔥","💫","🌿","⚡","🎉","🎶","💥","🍀","🌀","🕸","🌈"];
+      const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+      element.textContent = randomEmoji;
 
-        document.body.appendChild(star);
+      // 画面上のランダム位置（横方向）
+      const xPos = Math.random() * window.innerWidth * 0.8; 
+      const yPos = Math.random() * window.innerHeight * 0.8 + window.innerHeight; 
+      element.style.left = xPos + "px";
+      element.style.top = yPos + "px";
 
-        // アニメーション終了後に削除
-        star.addEventListener('animationend', () => {
-          star.remove();
-        });
-      }
+      // ランダムな色サイズ
+      const colors = ["#e74c3c","#9b59b6","#3498db","#2ecc71","#e67e22","#f1c40f"];
+      element.style.color = colors[Math.floor(Math.random() * colors.length)];
+      const size = Math.random() * 2 + 1; // 1～3倍
+      element.style.fontSize = (2 * size) + "rem";
+
+      document.body.appendChild(element);
+      // アニメーション終了後に要素を削除
+      element.addEventListener('animationend', () => {
+        element.remove();
+      });
     }
 
     // START/STOP ボタン
     const toggleBtn = document.getElementById("toggleBtn");
     toggleBtn.addEventListener("click", function() {
-      // 押した感アニメーションを付与し、後で削除
+      // 押したアニメ付与→終了後に削除
       toggleBtn.classList.add("pressAnimation");
       toggleBtn.addEventListener("animationend", () => {
         toggleBtn.classList.remove("pressAnimation");
@@ -247,8 +253,10 @@
 
         this.textContent = "STOP";
         this.style.backgroundColor = "#dc3545"; // STOP時の色
-        document.getElementById("resetBtn").classList.add("hidden");
+
         document.getElementById("result").textContent = "";
+        startRandomAnimation();  // ランダムアニメーション開始
+
       } else {
         // タイマー停止
         isRunning = false;
@@ -256,55 +264,122 @@
         const elapsedSec = (endTime - startTime) / 1000;
         const diff = Math.abs(elapsedSec - 10);
 
-        // ランクを判定
+        // ランク
         const rank = getRank(diff);
-        // ランダム英語セリフ
-        const chuniText = chuniLines[Math.floor(Math.random() * chuniLines.length)];
 
-        // 結果表示
-        const resultEl = document.getElementById("result");
-        
-        // ランク文字列を大きくカラー表示
-        const rankClass = getRankClass(rank);
-        const rankHtml = `<span class="rank-text ${rankClass}">${rank}</span>`;
-        
-        resultEl.innerHTML =
-          `Time Elapsed: ${elapsedSec.toFixed(3)} s\n` +
-          `Difference from 10s: ${diff.toFixed(3)} s\n` +
-          `Rank: ${rankHtml}\n` +
-          `${chuniText}`;
+        // 表示更新
+        const rankHtml = `<span class="rank-text rank-${rank}">${rank}</span>`;
+        document.getElementById("result").innerHTML =
+          `Time Elapsed: ${elapsedSec.toFixed(5)} s\n` +
+          `Difference from 10s: ${diff.toFixed(5)} s\n` +
+          `Rank: ${rankHtml}`;
 
         // Sランクなら祝福アニメーション
         if (rank === "S") {
           spawnBlessingAnimation();
         }
 
-        // 最良記録更新チェック
-        if (bestDifference === null || diff < bestDifference) {
-          bestDifference = diff;
-          bestTime = elapsedSec;
-          updateBestRecordText(bestTime, bestDifference, rank);
-
-          // ローカルストレージに保存
-          localStorage.setItem('bestDifference', bestDifference.toFixed(3));
-          localStorage.setItem('bestTime', bestTime.toFixed(3));
-        }
+        // ランキング更新
+        updateRanking(diff, elapsedSec);
 
         // ボタン状態を戻す
         this.textContent = "START";
-        this.style.backgroundColor = "#007bff"; // START時の色
-        document.getElementById("resetBtn").classList.remove("hidden");
+        this.style.backgroundColor = "#007bff";
       }
     });
 
-    // リセットボタン
-    document.getElementById("resetBtn").addEventListener("click", function() {
-      isRunning = false;
-      toggleBtn.textContent = "START";
-      toggleBtn.style.backgroundColor = "#007bff";
-      document.getElementById("result").textContent = "";
-      this.classList.add("hidden");
-    });
+    // Sランク祝福アニメーション
+    function spawnBlessingAnimation() {
+      for (let i = 0; i < 20; i++) {
+        const star = document.createElement('div');
+        star.classList.add('star');
+        star.textContent = '★';
+        const xPos = Math.random() * window.innerWidth;
+        const yPos = Math.random() * 100 - 100; 
+        star.style.left = `${xPos}px`;
+        star.style.top = `${yPos}px`;
+
+        document.body.appendChild(star);
+        star.addEventListener('animationend', () => {
+          star.remove();
+        });
+      }
+    }
+
+    // ランキングを更新してローカルストレージに保存
+    function updateRanking(diff, elapsedSec) {
+      // 既存のランキングを取得
+      const rankingData = loadRanking();
+      
+      // 記録を作成
+      const now = new Date();
+      const record = {
+        difference: diff,
+        timeElapsed: elapsedSec,
+        date: formatDate(now) // yyyy-MM-dd HH:mm:ss
+      };
+
+      // 既存と比較して差が小さい順に並べ、上位3位までにする
+      rankingData.push(record);
+      rankingData.sort((a, b) => a.difference - b.difference);
+      const top3 = rankingData.slice(0, 3);
+
+      // 保存
+      saveRanking(top3);
+
+      // 再表示
+      displayRanking();
+    }
+
+    // ランキングをローカルストレージから取得
+    function loadRanking() {
+      const data = localStorage.getItem(STORAGE_KEY);
+      if (data) {
+        return JSON.parse(data);
+      }
+      return [];
+    }
+
+    // ランキングをローカルストレージに保存
+    function saveRanking(ranking) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ranking));
+    }
+
+    // ランキングを画面に表示
+    function displayRanking() {
+      const rankingListEl = document.getElementById("rankingList");
+      rankingListEl.innerHTML = ""; // リセット
+
+      const rankingData = loadRanking();
+      if (rankingData.length === 0) {
+        rankingListEl.textContent = "No records yet.";
+        return;
+      }
+
+      rankingData.forEach((item, idx) => {
+        const rank = getRank(item.difference);
+        const rankClass = `rank-${rank}`;
+        const li = document.createElement('div');
+        li.className = "ranking-item";
+        li.innerHTML =
+          `<strong>${idx+1}位</strong> : ` +
+          `<span class="${rankClass}">${item.difference.toFixed(5)}s</span> / ` +
+          `${item.timeElapsed.toFixed(5)}s / ` +
+          `${item.date} (Rank: ${rank})`;
+        rankingListEl.appendChild(li);
+      });
+    }
+
+    // 日時を yyyy-MM-dd HH:mm:ss 形式で返す
+    function formatDate(dateObj) {
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth()+1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      const hh = String(dateObj.getHours()).padStart(2, '0');
+      const min = String(dateObj.getMinutes()).padStart(2, '0');
+      const ss = String(dateObj.getSeconds()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+    }
   </script>
 
 </body>
