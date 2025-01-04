@@ -80,8 +80,18 @@
       font-size: 1.2em;
       margin: 15px 0;
       white-space: pre-wrap; /* \nを改行で表示 */
-      min-height: 5em;       /* ある程度の高さを確保して、画面のレイアウトのズレを防ぐ */
+      min-height: 6em;       /* ある程度の高さを確保して、画面のレイアウトのズレを防ぐ */
     }
+
+    /* 計測時間をより目立つようにする */
+    .elapsed-time {
+      font-size: 1.6em;
+      font-weight: bold;
+      color: #e74c3c; /* red */
+      display: inline-block;
+      margin-bottom: 5px;
+    }
+
     /* ランク表示を大きくする */
     .rank-text {
       font-size: 2em;
@@ -120,10 +130,10 @@
     #rankingContainer {
       margin-top: 20px;
       text-align: left;
-      max-width: 400px;
+      max-width: 420px;
       margin-left: auto;
       margin-right: auto;
-      font-size: 0.9em;
+      font-size: 0.95em;
     }
     .ranking-title {
       font-size: 1.2em;
@@ -148,44 +158,53 @@
 
   <!-- ランキング表示領域 -->
   <div id="rankingContainer">
-    <div class="ranking-title">Top 3 Records</div>
+    <div class="ranking-title">Top 5 Records (Best to Worse)</div>
     <div id="rankingList"></div>
   </div>
 
   <script>
     let startTime = 0;        // STARTボタンを押した時刻
     let isRunning = false;    // タイマーが動作中かどうか
+    let animationRunning = false; // ランダムアニメーションを制御
 
+    // ランキングは最大100件を保持
+    const MAX_RECORDS = 100;
+    // 表示は上位5件
+    const DISPLAY_LIMIT = 5;
     // ローカルストレージ上にランキング用のキー
-    const STORAGE_KEY = "tenSecRanking";
+    const STORAGE_KEY = "tenSecRankingV3";
 
     // ページ読み込み時に既存のランキングを表示
     window.addEventListener('DOMContentLoaded', () => {
       displayRanking();
     });
 
-    // ランク取得
+    // ★ ランク判定ロジック (diff: 10秒との差)
+    //   S: < 0.01
+    //   A: < 0.1
+    //   B: < 0.3
+    //   C: < 0.7
+    //   D: < 1.0
+    //   E: それ以上
     function getRank(diff) {
-      // diff は 10秒との差の絶対値
-      if (diff < 0.00050) {
-        // 0.00050 = 0.0005 sec
+      if (diff < 0.01) {
         return "S";
-      } else if (diff < 0.00300) {
+      } else if (diff < 0.1) {
         return "A";
-      } else if (diff < 0.00700) {
+      } else if (diff < 0.3) {
         return "B";
-      } else if (diff < 0.01000) {
+      } else if (diff < 0.7) {
         return "C";
-      } else if (diff < 0.02000) {
+      } else if (diff < 1.0) {
         return "D";
       } else {
         return "E";
       }
     }
 
+    // ===== ランダムアニメーション関係 =====
     // 継続的に画面上にランダムアニメーションを出す
     // タイミングが不規則になるように、ランダムな間隔で再帰呼び出し
-    let animationRunning = false;
     function startRandomAnimation() {
       if (animationRunning) return;
       animationRunning = true;
@@ -208,12 +227,12 @@
       })();
     }
 
-    // 画面にランダムな文字や図形を表示する（不規則に出て上に消える）
+    // 画面にランダムな文字や図形を表示する（不規則に出て上へ消える）
     function spawnRandomElement() {
       const element = document.createElement('div');
       element.classList.add('random-animation');
 
-      // 適当に絵文字候補
+      // 絵文字候補
       const emojis = ["✨","🔥","💫","🌿","⚡","🎉","🎶","💥","🍀","🌀","🕸","🌈"];
       const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
       element.textContent = randomEmoji;
@@ -224,7 +243,7 @@
       element.style.left = xPos + "px";
       element.style.top = yPos + "px";
 
-      // ランダムな色サイズ
+      // ランダムな色・サイズ
       const colors = ["#e74c3c","#9b59b6","#3498db","#2ecc71","#e67e22","#f1c40f"];
       element.style.color = colors[Math.floor(Math.random() * colors.length)];
       const size = Math.random() * 2 + 1; // 1～3倍
@@ -235,6 +254,24 @@
       element.addEventListener('animationend', () => {
         element.remove();
       });
+    }
+
+    // Sランク祝福アニメーション (星が舞う)
+    function spawnBlessingAnimation() {
+      for (let i = 0; i < 20; i++) {
+        const star = document.createElement('div');
+        star.classList.add('star');
+        star.textContent = '★';
+        const xPos = Math.random() * window.innerWidth;
+        const yPos = Math.random() * 100 - 100; 
+        star.style.left = `${xPos}px`;
+        star.style.top = `${yPos}px`;
+
+        document.body.appendChild(star);
+        star.addEventListener('animationend', () => {
+          star.remove();
+        });
+      }
     }
 
     // START/STOP ボタン
@@ -265,22 +302,33 @@
         const diff = Math.abs(elapsedSec - 10);
 
         // ランク
-        const rank = getRank(diff);
+        const rankSymbol = getRank(diff);
 
-        // 表示更新
-        const rankHtml = `<span class="rank-text rank-${rank}">${rank}</span>`;
-        document.getElementById("result").innerHTML =
-          `Time Elapsed: ${elapsedSec.toFixed(5)} s\n` +
-          `Difference from 10s: ${diff.toFixed(5)} s\n` +
-          `Rank: ${rankHtml}`;
+        // 結果表示 (時間をより目立たせる)
+        const resultEl = document.getElementById("result");
+        const rankHtml = `<span class="rank-text rank-${rankSymbol}">${rankSymbol}</span>`;
+        resultEl.innerHTML = 
+          `あなたのタイム:\n` +
+          `<span class="elapsed-time">${elapsedSec.toFixed(5)} s</span>\n\n` +
+          `10秒との差: ${diff.toFixed(5)} s\n` +
+          `ランク: ${rankHtml}\n`;
 
-        // Sランクなら祝福アニメーション
-        if (rank === "S") {
+        // ランキング更新し、今回の順位を取得
+        const currentRank = updateRanking(diff, elapsedSec);
+
+        // Sランクなら星の祝福アニメーション
+        if (rankSymbol === "S") {
           spawnBlessingAnimation();
         }
 
-        // ランキング更新
-        updateRanking(diff, elapsedSec);
+        // 5位以内なら祝福、6位以上なら煽り (厨二病風 日本語)
+        if (currentRank <= 5) {
+          // 祝福メッセージ例
+          resultEl.innerHTML += `\n「ふははは…漆黒の祝福を受けるがいい、選ばれし者よ…！」`;
+        } else {
+          // 煽りメッセージ例
+          resultEl.innerHTML += `\n「貴様など闇の底に沈む運命…精進するがいい。 (${currentRank}位)」`;
+        }
 
         // ボタン状態を戻す
         this.textContent = "START";
@@ -288,50 +336,8 @@
       }
     });
 
-    // Sランク祝福アニメーション
-    function spawnBlessingAnimation() {
-      for (let i = 0; i < 20; i++) {
-        const star = document.createElement('div');
-        star.classList.add('star');
-        star.textContent = '★';
-        const xPos = Math.random() * window.innerWidth;
-        const yPos = Math.random() * 100 - 100; 
-        star.style.left = `${xPos}px`;
-        star.style.top = `${yPos}px`;
-
-        document.body.appendChild(star);
-        star.addEventListener('animationend', () => {
-          star.remove();
-        });
-      }
-    }
-
-    // ランキングを更新してローカルストレージに保存
-    function updateRanking(diff, elapsedSec) {
-      // 既存のランキングを取得
-      const rankingData = loadRanking();
-      
-      // 記録を作成
-      const now = new Date();
-      const record = {
-        difference: diff,
-        timeElapsed: elapsedSec,
-        date: formatDate(now) // yyyy-MM-dd HH:mm:ss
-      };
-
-      // 既存と比較して差が小さい順に並べ、上位3位までにする
-      rankingData.push(record);
-      rankingData.sort((a, b) => a.difference - b.difference);
-      const top3 = rankingData.slice(0, 3);
-
-      // 保存
-      saveRanking(top3);
-
-      // 再表示
-      displayRanking();
-    }
-
-    // ランキングをローカルストレージから取得
+    // ===== ランキング処理 =====
+    // ランキング(最大100件)をロード
     function loadRanking() {
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
@@ -340,34 +346,83 @@
       return [];
     }
 
-    // ランキングをローカルストレージに保存
+    // ランキングを保存
     function saveRanking(ranking) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(ranking));
     }
 
-    // ランキングを画面に表示
+    // ランキングを画面表示 (上位5名)
     function displayRanking() {
       const rankingListEl = document.getElementById("rankingList");
       rankingListEl.innerHTML = ""; // リセット
 
       const rankingData = loadRanking();
       if (rankingData.length === 0) {
-        rankingListEl.textContent = "No records yet.";
+        rankingListEl.textContent = "まだ記録はありません。";
         return;
       }
 
-      rankingData.forEach((item, idx) => {
-        const rank = getRank(item.difference);
-        const rankClass = `rank-${rank}`;
-        const li = document.createElement('div');
-        li.className = "ranking-item";
-        li.innerHTML =
+      // 上位5件のみ表示
+      const top5 = rankingData.slice(0, DISPLAY_LIMIT);
+      top5.forEach((item, idx) => {
+        const rankSymbol = getRank(item.difference);
+        const rankClass = `rank-${rankSymbol}`;
+        const div = document.createElement('div');
+        div.className = "ranking-item";
+        // “difference”が10秒との差, “timeElapsed”が実際の計測秒数
+        div.innerHTML =
           `<strong>${idx+1}位</strong> : ` +
           `<span class="${rankClass}">${item.difference.toFixed(5)}s</span> / ` +
           `${item.timeElapsed.toFixed(5)}s / ` +
-          `${item.date} (Rank: ${rank})`;
-        rankingListEl.appendChild(li);
+          `${item.date} (ランク: ${rankSymbol})`;
+        rankingListEl.appendChild(div);
       });
+    }
+
+    // 新しい記録をランキングに反映し、今回の順位を返す
+    function updateRanking(diff, elapsedSec) {
+      // 既存のランキングを取得
+      let rankingData = loadRanking();
+
+      // 今回の記録を作成
+      const now = new Date();
+      const record = {
+        difference: diff,
+        timeElapsed: elapsedSec,
+        date: formatDate(now),   // yyyy-MM-dd HH:mm:ss
+        timestamp: now.getTime() // ソート時に使う(同じ差での順序)
+      };
+
+      // ランキングへ追加
+      rankingData.push(record);
+
+      // 差が小さい順にソート。diffが同じならtimestampが小さい(古い)方が先、新しい方が後
+      rankingData.sort((a, b) => {
+        if (a.difference === b.difference) {
+          return a.timestamp - b.timestamp; 
+        }
+        return a.difference - b.difference;
+      });
+
+      // 上位100件のみ保持
+      rankingData = rankingData.slice(0, MAX_RECORDS);
+
+      // 現在の記録が何番目か調べる (0-based index) 
+      // 同じ差のときは古い方 → 新しい方の順なので、今回の記録は「最後に出現するインデックス」
+      let newRecordIndex = -1;
+      for (let i = rankingData.length - 1; i >= 0; i--) {
+        if (rankingData[i].timestamp === record.timestamp) {
+          newRecordIndex = i;
+          break;
+        }
+      }
+      const finalRank = newRecordIndex + 1; // 1-based rank
+
+      // ランキングを保存し、表示更新
+      saveRanking(rankingData);
+      displayRanking();
+
+      return finalRank;
     }
 
     // 日時を yyyy-MM-dd HH:mm:ss 形式で返す
@@ -381,6 +436,5 @@
       return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
     }
   </script>
-
 </body>
 </html>
