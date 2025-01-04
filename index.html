@@ -36,7 +36,7 @@
       border: none;
       outline: none;
       cursor: pointer;
-      transition: background-color 0.3s, transform 0.3s;
+      transition: background-color 0.3s;
     }
     #toggleBtn:active {
       opacity: 0.9;
@@ -53,6 +53,16 @@
       100% {
         transform: scale(1);
       }
+    }
+
+    /* ボタンが不規則にドクドク(pulse)するアニメーション */
+    .pulseAnimation {
+      animation: throb 1s ease-in-out;
+    }
+    @keyframes throb {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.2); }
+      100% { transform: scale(1); }
     }
 
     /* 継続的に出現するランダムアニメーション用の要素 */
@@ -79,8 +89,8 @@
     #result {
       font-size: 1.2em;
       margin: 15px 0;
-      white-space: pre-wrap; /* \nを改行で表示 */
-      min-height: 6em;       /* ある程度の高さを確保して、画面のレイアウトのズレを防ぐ */
+      white-space: pre-wrap; /* \n を改行で表示 */
+      min-height: 6em;       /* ある程度の高さを確保してレイアウト崩れ防止 */
     }
 
     /* 計測時間をより目立つようにする */
@@ -144,6 +154,25 @@
       margin-bottom: 5px;
       line-height: 1.4em;
     }
+
+    /* ランク判定表 */
+    #rankGuide {
+      max-width: 420px;
+      margin: 20px auto;
+      text-align: left;
+      font-size: 0.9em;
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    #rankGuide h2 {
+      font-size: 1em;
+      margin: 0 0 6px;
+      font-weight: bold;
+    }
+    .rank-row {
+      margin: 4px 0;
+    }
   </style>
 </head>
 <body>
@@ -162,17 +191,30 @@
     <div id="rankingList"></div>
   </div>
 
+  <!-- ランク判定表 -->
+  <div id="rankGuide">
+    <h2>ランク判定一覧</h2>
+    <div class="rank-row">S ランク: 10秒との差 < 0.01 秒</div>
+    <div class="rank-row">A ランク: 0.1 秒未満</div>
+    <div class="rank-row">B ランク: 0.3 秒未満</div>
+    <div class="rank-row">C ランク: 0.7 秒未満</div>
+    <div class="rank-row">D ランク: 1.0 秒未満</div>
+    <div class="rank-row">E ランク: 1.0 秒以上</div>
+    <div class="rank-row">※ ぴったり10.00000sは特別！</div>
+  </div>
+
   <script>
     let startTime = 0;        // STARTボタンを押した時刻
     let isRunning = false;    // タイマーが動作中かどうか
     let animationRunning = false; // ランダムアニメーションを制御
+    let pulseRunning = false; // ボタン脈動アニメーション制御
 
     // ランキングは最大100件を保持
     const MAX_RECORDS = 100;
     // 表示は上位5件
     const DISPLAY_LIMIT = 5;
     // ローカルストレージ上にランキング用のキー
-    const STORAGE_KEY = "tenSecRankingV3";
+    const STORAGE_KEY = "tenSecRankingV4";
 
     // ページ読み込み時に既存のランキングを表示
     window.addEventListener('DOMContentLoaded', () => {
@@ -202,21 +244,36 @@
       }
     }
 
+    // ===== メッセージ群 =====
+    // 5位以内(祝福)パターン
+    const blessingMessages = [
+      "ふははは…漆黒の祝福を受けるがいい、選ばれし者よ…！",
+      "闇の覇王が微笑む…。お前の力は真に目覚めたようだな…！",
+      "時の歪みすらねじ伏せたか…さすがだな！",
+      "虚無の深淵さえ凌駕するとは…見事なまでの狂気…！",
+      "お前の波動を感じる…。その高みへ更に上り詰めろ…！"
+    ];
+    // 6位以上(煽り)パターン
+    const tauntingMessages = [
+      "貴様など闇の底に沈む運命…精進するがいい。",
+      "この程度の力か…失望させてくれるなよ？",
+      "腐りかけた魂の嘆きが聞こえる…。もっと暴れてみせろ…！",
+      "闇の眷属(けんぞく)には程遠いな…今はただの塵だ。",
+      "ふっ…その程度か。闇の宴に参列する資格はまだない。"
+    ];
+    // ぴったりの時（diff === 0）の特別メッセージ
+    const perfectMessage = "…ぬぅ…これは…完全なる虚空との融合…！";
+
     // ===== ランダムアニメーション関係 =====
-    // 継続的に画面上にランダムアニメーションを出す
-    // タイミングが不規則になるように、ランダムな間隔で再帰呼び出し
+    // 継続的に画面上にランダムアニメーションを出す(不規則間隔)
     function startRandomAnimation() {
       if (animationRunning) return;
       animationRunning = true;
 
       (function spawnNext() {
-        // 0.8秒 ～ 3秒 の間でランダムに再発生
+        // 0.8秒～3秒の間でランダム
         const nextDelay = Math.random() * 2200 + 800;
-
-        // ランダム要素生成
         spawnRandomElement();
-
-        // 再帰呼び出しで繰り返す
         setTimeout(() => {
           if (isRunning) {
             spawnNext();
@@ -226,37 +283,59 @@
         }, nextDelay);
       })();
     }
-
-    // 画面にランダムな文字や図形を表示する（不規則に出て上へ消える）
+    // 画面にランダムな絵文字を表示 → 上へ流れて消える
     function spawnRandomElement() {
       const element = document.createElement('div');
       element.classList.add('random-animation');
 
-      // 絵文字候補
       const emojis = ["✨","🔥","💫","🌿","⚡","🎉","🎶","💥","🍀","🌀","🕸","🌈"];
       const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
       element.textContent = randomEmoji;
 
-      // 画面上のランダム位置（横方向）
       const xPos = Math.random() * window.innerWidth * 0.8; 
       const yPos = Math.random() * window.innerHeight * 0.8 + window.innerHeight; 
       element.style.left = xPos + "px";
       element.style.top = yPos + "px";
 
-      // ランダムな色・サイズ
       const colors = ["#e74c3c","#9b59b6","#3498db","#2ecc71","#e67e22","#f1c40f"];
       element.style.color = colors[Math.floor(Math.random() * colors.length)];
-      const size = Math.random() * 2 + 1; // 1～3倍
+      const size = Math.random() * 2 + 1; // 1~3倍
       element.style.fontSize = (2 * size) + "rem";
 
       document.body.appendChild(element);
-      // アニメーション終了後に要素を削除
       element.addEventListener('animationend', () => {
         element.remove();
       });
     }
 
-    // Sランク祝福アニメーション (星が舞う)
+    // START後にボタンが不規則に脈動する
+    function startButtonPulse() {
+      if (pulseRunning) return;
+      pulseRunning = true;
+
+      (function pulseNext() {
+        // 1～4秒の間隔でランダム
+        const nextDelay = Math.random() * 3000 + 1000;
+        pulseOnce();
+        setTimeout(() => {
+          if (isRunning) {
+            pulseNext();
+          } else {
+            pulseRunning = false;
+          }
+        }, nextDelay);
+      })();
+    }
+    // ボタンに脈動アニメーションを一度だけ付与→終了後に削除
+    function pulseOnce() {
+      const btn = document.getElementById("toggleBtn");
+      btn.classList.add("pulseAnimation");
+      btn.addEventListener("animationend", () => {
+        btn.classList.remove("pulseAnimation");
+      }, { once: true });
+    }
+
+    // Sランク or 5位以内で祝福アニメーション (星が舞う)
     function spawnBlessingAnimation() {
       for (let i = 0; i < 20; i++) {
         const star = document.createElement('div');
@@ -293,6 +372,7 @@
 
         document.getElementById("result").textContent = "";
         startRandomAnimation();  // ランダムアニメーション開始
+        startButtonPulse();      // ボタン脈動アニメ開始
 
       } else {
         // タイマー停止
@@ -300,34 +380,47 @@
         const endTime = performance.now();
         const elapsedSec = (endTime - startTime) / 1000;
         const diff = Math.abs(elapsedSec - 10);
-
-        // ランク
-        const rankSymbol = getRank(diff);
-
-        // 結果表示 (時間をより目立たせる)
+        
+        // 結果表示
         const resultEl = document.getElementById("result");
+        // ぴったり(10.00000s)かどうか
+        const isPerfect = (elapsedSec.toFixed(5) === "10.00000");
+
+        // ランク取得
+        const rankSymbol = getRank(diff);
         const rankHtml = `<span class="rank-text rank-${rankSymbol}">${rankSymbol}</span>`;
-        resultEl.innerHTML = 
+
+        let baseText = 
           `あなたのタイム:\n` +
           `<span class="elapsed-time">${elapsedSec.toFixed(5)} s</span>\n\n` +
           `10秒との差: ${diff.toFixed(5)} s\n` +
           `ランク: ${rankHtml}\n`;
 
-        // ランキング更新し、今回の順位を取得
+        // ランキング更新
         const currentRank = updateRanking(diff, elapsedSec);
 
-        // Sランクなら星の祝福アニメーション
-        if (rankSymbol === "S") {
-          spawnBlessingAnimation();
+        // まずは結果文字列を作る
+        if (isPerfect) {
+          // 完全に 10.00000s のとき
+          baseText += `\n${perfectMessage}`;
+        } else {
+          // 通常
+          if (currentRank <= 5) {
+            // 5位以内 => 祝福メッセージ(ランダム)
+            const blessing = blessingMessages[Math.floor(Math.random() * blessingMessages.length)];
+            baseText += `\n${blessing}`;
+          } else {
+            // 6位以上 => 煽りメッセージ(ランダム)
+            const taunt = tauntingMessages[Math.floor(Math.random() * tauntingMessages.length)];
+            baseText += `\n${taunt} (${currentRank}位)`;
+          }
         }
 
-        // 5位以内なら祝福、6位以上なら煽り (厨二病風 日本語)
-        if (currentRank <= 5) {
-          // 祝福メッセージ例
-          resultEl.innerHTML += `\n「ふははは…漆黒の祝福を受けるがいい、選ばれし者よ…！」`;
-        } else {
-          // 煽りメッセージ例
-          resultEl.innerHTML += `\n「貴様など闇の底に沈む運命…精進するがいい。 (${currentRank}位)」`;
+        resultEl.innerHTML = baseText;
+
+        // 5位以内またはSランクのときに祝福アニメーション
+        if (currentRank <= 5 || rankSymbol === "S") {
+          spawnBlessingAnimation();
         }
 
         // ボタン状態を戻す
@@ -369,7 +462,6 @@
         const rankClass = `rank-${rankSymbol}`;
         const div = document.createElement('div');
         div.className = "ranking-item";
-        // “difference”が10秒との差, “timeElapsed”が実際の計測秒数
         div.innerHTML =
           `<strong>${idx+1}位</strong> : ` +
           `<span class="${rankClass}">${item.difference.toFixed(5)}s</span> / ` +
@@ -379,27 +471,24 @@
       });
     }
 
-    // 新しい記録をランキングに反映し、今回の順位を返す
+    // 新しい記録をランキングに反映し、今回の順位(1-based)を返す
     function updateRanking(diff, elapsedSec) {
-      // 既存のランキングを取得
       let rankingData = loadRanking();
 
-      // 今回の記録を作成
       const now = new Date();
       const record = {
         difference: diff,
         timeElapsed: elapsedSec,
-        date: formatDate(now),   // yyyy-MM-dd HH:mm:ss
-        timestamp: now.getTime() // ソート時に使う(同じ差での順序)
+        date: formatDate(now),
+        timestamp: now.getTime() // 同差の場合の順序判定に使用
       };
 
-      // ランキングへ追加
+      // ランキング追加 & ソート
       rankingData.push(record);
-
-      // 差が小さい順にソート。diffが同じならtimestampが小さい(古い)方が先、新しい方が後
       rankingData.sort((a, b) => {
         if (a.difference === b.difference) {
-          return a.timestamp - b.timestamp; 
+          // 差が同じなら timestamp が小さいほうを先に
+          return a.timestamp - b.timestamp;
         }
         return a.difference - b.difference;
       });
@@ -407,8 +496,7 @@
       // 上位100件のみ保持
       rankingData = rankingData.slice(0, MAX_RECORDS);
 
-      // 現在の記録が何番目か調べる (0-based index) 
-      // 同じ差のときは古い方 → 新しい方の順なので、今回の記録は「最後に出現するインデックス」
+      // 今回の順位を計算 (0-based index → +1)
       let newRecordIndex = -1;
       for (let i = rankingData.length - 1; i >= 0; i--) {
         if (rankingData[i].timestamp === record.timestamp) {
@@ -416,9 +504,9 @@
           break;
         }
       }
-      const finalRank = newRecordIndex + 1; // 1-based rank
+      const finalRank = newRecordIndex + 1;
 
-      // ランキングを保存し、表示更新
+      // ランキング保存 & 表示更新
       saveRanking(rankingData);
       displayRanking();
 
