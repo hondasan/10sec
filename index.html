@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>10秒ぴったりゲーム</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 30px;
+    }
+    .button-container {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    button {
+      width: 120px;
+      height: 120px;
+      border-radius: 60px; /* 真円になる */
+      background-color: #007bff;
+      color: #fff;
+      font-size: 18px;
+      margin: 10px;
+      border: none;
+      outline: none;
+      cursor: pointer;
+    }
+    button:active {
+      opacity: 0.8;
+    }
+    #resetBtn {
+      background-color: #28a745;
+    }
+    #result, #bestRecord {
+      font-size: 1.2em;
+      margin: 10px 0;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>10秒ぴったりゲーム</h1>
+
+  <div class="button-container">
+    <button id="startBtn">START</button>
+    <button id="stopBtn" disabled>STOP</button>
+    <button id="resetBtn" class="hidden">RESET</button>
+  </div>
+
+  <div id="result"></div>
+  <div id="bestRecord">最良記録: --</div>
+
+  <script>
+    let startTime = 0;              // スタートボタン押下時の時刻
+    let isRunning = false;          // タイマーが動作中かどうか
+    let timerId = null;            // setTimeout / setInterval 用
+    let bestDifference = null;      // 最良の差(絶対値が小さい方が良い)
+    let bestTime = null;           // 最良記録のときの経過時間
+
+    // 中二病セリフ集（結果表示時にランダムで表示）
+    const chuniLines = [
+      "闇の炎に抱かれて消えろ…！",
+      "我が刻(とき)は来たれり…！",
+      "この勝利、運命すら変えてみせる…！",
+      "世界が震撼する時は近い…！",
+      "ハッ…お前の力はこんなものではないはずだ…！"
+    ];
+
+    // ランクを算出する関数
+    function getRank(diff) {
+      if (diff < 0.05) {
+        return "S";
+      } else if (diff < 0.3) {
+        return "A";
+      } else if (diff < 0.7) {
+        return "B";
+      } else if (diff < 1.0) {
+        return "C";
+      } else if (diff < 2.0) {
+        return "D";
+      } else {
+        return "E";
+      }
+    }
+
+    // スタートボタン押下時
+    document.getElementById("startBtn").addEventListener("click", function() {
+      if (isRunning) return; // 多重スタート防止
+
+      // タイマー開始
+      isRunning = true;
+      startTime = performance.now();
+      document.getElementById("stopBtn").disabled = false;
+      document.getElementById("startBtn").disabled = true;
+      document.getElementById("resetBtn").classList.add("hidden");
+      document.getElementById("result").textContent = "";
+    });
+
+    // ストップボタン押下時
+    document.getElementById("stopBtn").addEventListener("click", function() {
+      if (!isRunning) return; // スタートしていない場合は無視
+
+      isRunning = false;
+      const endTime = performance.now();
+      const elapsedSec = (endTime - startTime) / 1000; // 秒に変換
+      const diff = Math.abs(elapsedSec - 10);
+
+      // ランク判定
+      const rank = getRank(diff);
+
+      // ランダムな中二病台詞
+      const chuniText = chuniLines[Math.floor(Math.random() * chuniLines.length)];
+
+      // 結果表示
+      const resultText = `経過時間: ${elapsedSec.toFixed(3)} 秒\n10秒との差: ${diff.toFixed(3)} 秒\n` + 
+                         `ランク: ${rank}\n${chuniText}`;
+      document.getElementById("result").textContent = resultText;
+
+      // 最良記録の更新
+      if (bestDifference === null || diff < bestDifference) {
+        bestDifference = diff;
+        bestTime = elapsedSec;
+        document.getElementById("bestRecord").textContent = 
+          `最良記録: ${bestTime.toFixed(3)} 秒 (差 ${bestDifference.toFixed(3)} 秒, ランク: ${rank})`;
+      }
+
+      // ボタン操作
+      document.getElementById("stopBtn").disabled = true;
+      document.getElementById("startBtn").disabled = false;
+      document.getElementById("resetBtn").classList.remove("hidden");
+    });
+
+    // リセットボタン押下時
+    document.getElementById("resetBtn").addEventListener("click", function() {
+      // タイマーリセット
+      isRunning = false;
+      document.getElementById("stopBtn").disabled = true;
+      document.getElementById("startBtn").disabled = false;
+      document.getElementById("result").textContent = "";
+    });
+  </script>
+
+</body>
+</html>
