@@ -19,11 +19,30 @@
       flex-wrap: wrap;
       margin-bottom: 20px;
     }
-    button {
+    /* スタート/ストップ兼用ボタン */
+    #toggleBtn {
+      /* 画面の短辺の 50% 程度の大きな丸ボタン */
+      width: 50vmin;
+      height: 50vmin;
+      border-radius: 50%;
+      background-color: #007bff; /* スタート時の色 */
+      color: #fff;
+      font-size: 24px;
+      margin: 10px;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    #toggleBtn:active {
+      opacity: 0.8;
+    }
+    /* リセットボタン */
+    #resetBtn {
       width: 120px;
-      height: 120px;
-      border-radius: 60px; /* 真円になる */
-      background-color: #007bff;
+      height: 50px;
+      border-radius: 25px;
+      background-color: #28a745;
       color: #fff;
       font-size: 18px;
       margin: 10px;
@@ -31,13 +50,15 @@
       outline: none;
       cursor: pointer;
     }
-    button:active {
+    #resetBtn:active {
       opacity: 0.8;
     }
-    #resetBtn {
-      background-color: #28a745;
+    #result {
+      font-size: 1.2em;
+      margin: 15px 0;
+      white-space: pre-wrap; /* \n を改行で表示 */
     }
-    #result, #bestRecord {
+    #bestRecord {
       font-size: 1.2em;
       margin: 10px 0;
     }
@@ -51,8 +72,8 @@
   <h1>10秒ぴったりゲーム</h1>
 
   <div class="button-container">
-    <button id="startBtn">START</button>
-    <button id="stopBtn" disabled>STOP</button>
+    <!-- スタート / ストップ 切り替え用のボタン  -->
+    <button id="toggleBtn">START</button>
     <button id="resetBtn" class="hidden">RESET</button>
   </div>
 
@@ -60,20 +81,47 @@
   <div id="bestRecord">最良記録: --</div>
 
   <script>
-    let startTime = 0;              // スタートボタン押下時の時刻
-    let isRunning = false;          // タイマーが動作中かどうか
-    let timerId = null;            // setTimeout / setInterval 用
-    let bestDifference = null;      // 最良の差(絶対値が小さい方が良い)
-    let bestTime = null;           // 最良記録のときの経過時間
+    let startTime = 0;           // スタートボタン押下時の時刻
+    let isRunning = false;       // タイマーが動作中かどうか
+    let bestDifference = null;   // 最良の差 (絶対値が小さいほど良い)
+    let bestTime = null;         // 最良記録のときの経過時間
 
-    // 中二病セリフ集（結果表示時にランダムで表示）
+    // ページ読み込み時にローカルストレージから最良記録を読み込み
+    window.addEventListener('DOMContentLoaded', () => {
+      const storedBestDiff = localStorage.getItem('bestDifference');
+      const storedBestTime = localStorage.getItem('bestTime');
+      if (storedBestDiff !== null && storedBestTime !== null) {
+        bestDifference = parseFloat(storedBestDiff);
+        bestTime = parseFloat(storedBestTime);
+        const rank = getRank(bestDifference);
+        updateBestRecordText(bestTime, bestDifference, rank);
+      }
+    });
+
+    // 中二病セリフ集（結果表示時にランダムで表示; 多少増量）
     const chuniLines = [
       "闇の炎に抱かれて消えろ…！",
       "我が刻(とき)は来たれり…！",
       "この勝利、運命すら変えてみせる…！",
       "世界が震撼する時は近い…！",
-      "ハッ…お前の力はこんなものではないはずだ…！"
+      "ハッ…お前の力はこんなものではないはずだ…！",
+      "力が溢れて止まらない…！",
+      "ははは…神をも超える存在になる！",
+      "絶望へ誘(いざな)ってやろう…！",
+      "究極の闇がその姿を現す…！",
+      "邪眼が疼(うず)くぜ…！",
+      "眠れる魔王が目覚めたのだ…！"
     ];
+
+    // ランク別に文字色を変えるためのマップ
+    const rankColors = {
+      "S": "#f1c40f", // gold
+      "A": "#e67e22", // orange
+      "B": "#3498db", // blue
+      "C": "#2ecc71", // green
+      "D": "#9b59b6", // purple
+      "E": "#e74c3c"  // red
+    };
 
     // ランクを算出する関数
     function getRank(diff) {
@@ -92,63 +140,78 @@
       }
     }
 
-    // スタートボタン押下時
-    document.getElementById("startBtn").addEventListener("click", function() {
-      if (isRunning) return; // 多重スタート防止
+    // 最良記録表示テキストを更新する関数
+    function updateBestRecordText(time, difference, rank) {
+      document.getElementById("bestRecord").textContent =
+        `最良記録: ${time.toFixed(3)} 秒 (差 ${difference.toFixed(3)} 秒, ランク: ${rank})`;
+    }
 
-      // タイマー開始
-      isRunning = true;
-      startTime = performance.now();
-      document.getElementById("stopBtn").disabled = false;
-      document.getElementById("startBtn").disabled = true;
-      document.getElementById("resetBtn").classList.add("hidden");
-      document.getElementById("result").textContent = "";
-    });
+    // START/STOP ボタン押下時
+    document.getElementById("toggleBtn").addEventListener("click", function() {
+      // タイマーが動いていない→START
+      if (!isRunning) {
+        isRunning = true;
+        startTime = performance.now();
 
-    // ストップボタン押下時
-    document.getElementById("stopBtn").addEventListener("click", function() {
-      if (!isRunning) return; // スタートしていない場合は無視
+        // ボタン状態切り替え
+        this.textContent = "STOP";
+        this.style.backgroundColor = "#dc3545"; // ストップ時の色
+        document.getElementById("resetBtn").classList.add("hidden");
+        document.getElementById("result").textContent = "";
 
-      isRunning = false;
-      const endTime = performance.now();
-      const elapsedSec = (endTime - startTime) / 1000; // 秒に変換
-      const diff = Math.abs(elapsedSec - 10);
+      } else {
+        // タイマーが動作中→STOP
+        isRunning = false;
+        const endTime = performance.now();
+        const elapsedSec = (endTime - startTime) / 1000; // 秒に変換
+        const diff = Math.abs(elapsedSec - 10);
 
-      // ランク判定
-      const rank = getRank(diff);
+        // ランク判定
+        const rank = getRank(diff);
 
-      // ランダムな中二病台詞
-      const chuniText = chuniLines[Math.floor(Math.random() * chuniLines.length)];
+        // ランダムな中二病台詞
+        const chuniText = chuniLines[Math.floor(Math.random() * chuniLines.length)];
 
-      // 結果表示
-      const resultText = `経過時間: ${elapsedSec.toFixed(3)} 秒\n10秒との差: ${diff.toFixed(3)} 秒\n` + 
-                         `ランク: ${rank}\n${chuniText}`;
-      document.getElementById("result").textContent = resultText;
+        // 結果表示
+        const resultEl = document.getElementById("result");
+        resultEl.style.color = rankColors[rank] || "#000"; // ランクごとに文字色を変える
+        resultEl.textContent = 
+          `経過時間: ${elapsedSec.toFixed(3)} 秒\n` +
+          `10秒との差: ${diff.toFixed(3)} 秒\n` +
+          `ランク: ${rank}\n` +
+          `${chuniText}`;
 
-      // 最良記録の更新
-      if (bestDifference === null || diff < bestDifference) {
-        bestDifference = diff;
-        bestTime = elapsedSec;
-        document.getElementById("bestRecord").textContent = 
-          `最良記録: ${bestTime.toFixed(3)} 秒 (差 ${bestDifference.toFixed(3)} 秒, ランク: ${rank})`;
+        // 最良記録の更新チェック
+        if (bestDifference === null || diff < bestDifference) {
+          bestDifference = diff;
+          bestTime = elapsedSec;
+          updateBestRecordText(bestTime, bestDifference, rank);
+
+          // ローカルストレージにも保存
+          localStorage.setItem('bestDifference', bestDifference.toFixed(3));
+          localStorage.setItem('bestTime', bestTime.toFixed(3));
+        }
+
+        // ボタン状態切り替え
+        this.textContent = "START";
+        this.style.backgroundColor = "#007bff"; // スタート時の色
+        document.getElementById("resetBtn").classList.remove("hidden");
       }
-
-      // ボタン操作
-      document.getElementById("stopBtn").disabled = true;
-      document.getElementById("startBtn").disabled = false;
-      document.getElementById("resetBtn").classList.remove("hidden");
     });
 
     // リセットボタン押下時
     document.getElementById("resetBtn").addEventListener("click", function() {
-      // タイマーリセット
+      // タイマー停止
       isRunning = false;
-      document.getElementById("stopBtn").disabled = true;
-      document.getElementById("startBtn").disabled = false;
+
+      // ボタン状態リセット
+      const toggleBtn = document.getElementById("toggleBtn");
+      toggleBtn.textContent = "START";
+      toggleBtn.style.backgroundColor = "#007bff";
       document.getElementById("result").textContent = "";
+      this.classList.add("hidden");
     });
   </script>
 
 </body>
 </html>
-
